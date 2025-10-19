@@ -41,7 +41,8 @@ def download_data():
     # dgs10 = fred_csv('DGS10')             # 日频 - 美债10年预期利率 => 减去 通胀率 = 实际利率
     # cpi = fred_csv('CPIAUCSL')            # 月频 - 消费者价格指数 => 计算通胀率
     # dxy = fred_csv('DTWEXB')              # 日频（名义广义美元指数）- 
-    dfii = fred_csv('DFII10')            # 日频 - 外国债券收益率指数-10年期 约等于 实际利率
+    # dfii = fred_csv('DFII10')            # 日频 - 外国债券收益率指数-10年期 约等于 实际利率
+    GVZCLS = fred_csv('GVZCLS')
 
 def MergeData():
     # 读取黄金价格数据
@@ -475,5 +476,83 @@ def advanced_gold_prediction(interest_rate=1.75, months=5, start_date='2025-10-0
     
     return prediction_df
 
+def ARIMA():
+    # 1. 数据读取与预处理
+    df = pd.read_csv('/Users/nobulamb/Documents/Money-More-Money/data/merged_gold_interest_monthly.csv')
+    
+    # 修复：确保Date列转换为datetime格式
+    df['Date'] = pd.to_datetime(df['Date'])
+    df.set_index('Date', inplace=True)
+
+    # 2. ARIMAX建模
+    model_arimax = sm.tsa.ARIMA(
+        endog=df['Gold_Price'], 
+        exog=df['Real_Interest_Rate'],
+        order=(1,1,1)
+    )
+    results = model_arimax.fit()  
+
+    future_rates = [3, 4, 5, 6, 5, 5]  # 示例数据（单位：%）
+    future_dates = pd.date_range(start='2025-10-31', periods=6, freq='M')  # 生成未来日期  
+
+    forecast = results.get_forecast(
+        steps=6,  # 预测6期
+        exog=future_rates  # 传入未来实际利率
+    )
+
+    pred_mean = forecast.predicted_mean          # 点预测值（金价）
+    conf_int = forecast.conf_int(alpha=0.05)     # 95%置信区间
+
+    # === 新增：逐行输出预测结果 ===
+    print("\\n" + "="*50)
+    print("ARIMA模型预测结果（逐月输出）")
+    print("="*50)
+    
+    for i, (date, price, lower, upper) in enumerate(zip(future_dates, pred_mean, conf_int.iloc[:, 0], conf_int.iloc[:, 1]), 1):
+        print(f"第{i}个月 ({date.strftime('%Y年%m月')}):")
+        print(f"  预测金价: {price:.2f} 美元/盎司")
+        print(f"  95%置信区间: [{lower:.2f}, {upper:.2f}] 美元/盎司")
+        print(f"  假设实际利率: {future_rates[i-1]}%")
+        print("-" * 40)
+
+    # 输出模型统计信息
+    print(f"\\n模型统计信息:")
+    print(f"AIC: {results.aic:.2f}")
+    print(f"BIC: {results.bic:.2f}")
+    print(f"HQIC: {results.hqic:.2f}")
+
+    import matplotlib.pyplot as plt
+
+    # 修复绘图部分：使用正确的日期格式
+    plt.figure(figsize=(12, 6))
+    
+    # 绘制历史金价 - 使用df.index（已经是datetime）
+    plt.plot(df.index, df['Gold_Price'], label='历史数据', color='blue')
+
+    # 绘制预测金价及置信区间
+    plt.plot(future_dates, pred_mean, label='预测值', color='red', linestyle='--', marker='o')
+    plt.fill_between(
+        future_dates,
+        conf_int.iloc[:, 0],  # 置信区间下限
+        conf_int.iloc[:, 1],  # 置信区间上限
+        color='pink', alpha=0.3, label='95%置信区间'
+    )
+
+    plt.title('黄金价格预测（基于实际利率）')
+    plt.xlabel('时间')
+    plt.ylabel('金价 (美元/盎司)')
+    plt.legend()
+    plt.grid(True, alpha=0.3)
+    plt.xticks(rotation=45)
+    
+    # 保存图表
+    plt.savefig('/Users/nobulamb/Documents/Money-More-Money/data/arima_prediction.png', 
+                dpi=300, bbox_inches='tight')
+    plt.show()
+    
+    print("ARIMA预测图表已保存为: data/arima_prediction.png")
+
 # 调用高级预测函数
-advanced_results = advanced_gold_prediction(interest_rate=1.7, months=6, start_date='2025-10-01')
+# advanced_results = advanced_gold_prediction(interest_rate=1.7, months=6, start_date='2025-10-01')
+# ARIMA()
+download_data()
